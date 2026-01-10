@@ -11,6 +11,11 @@ let package = Package(
             name: "JuzbusProtocols",
             targets: ["JuzbusProtocols"]
         ),
+        .library(
+            name: "JuzbusObjCBridge",
+            type: .dynamic,
+            targets: ["JuzbusObjCBridge"]
+        ),
         .executable(
             name: "juzbus-directory",
             targets: ["JuzbusDirectory"]
@@ -29,6 +34,12 @@ let package = Package(
         .target(
             name: "JuzbusProtocols",
             dependencies: []
+        ),
+        .target(
+            name: "JuzbusObjCBridge",
+            dependencies: ["JuzbusProtocols"],
+            path: "Sources/JuzbusObjCBridge",
+            publicHeadersPath: "include"
         ),
         .executableTarget(
             name: "JuzbusDirectory",

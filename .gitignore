@@ -8,6 +8,9 @@ xcuserdata/
 *.xcworkspace
 *.xcodeproj
 
+# Node
+node/build/
+
 # macOS
 .DS_Store
 *.swp
