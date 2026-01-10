@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling", "cffi>=1.17.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "juzbus"
+version = "0.1.0"
+description = "Python asyncio bindings for juzbus XPC framework"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "juzna"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: MacOS :: MacOS X",
+    "Framework :: AsyncIO",
+]
+dependencies = [
+    "cffi>=1.17.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/juzna/juzbus"
+Repository = "https://github.com/juzna/juzbus"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/juzbus"]
+artifacts = ["src/juzbus/*.dylib"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/examples",
+]
