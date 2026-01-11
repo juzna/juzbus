@@ -331,8 +331,4 @@ This will:
 
 ## License
 
-This project is provided as-is for demonstration and integration purposes.
-
-## Credits
-
-Developed based on the XPC LaunchAgent Directory Service requirements specification.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
