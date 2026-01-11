@@ -6,6 +6,7 @@ const native = require('../build/Release/juzbus.node');
 class Client {
     constructor() {
         this._client = new native.Client();
+        this._closed = false;
     }
 
     /**
@@ -13,6 +14,9 @@ class Client {
      * @returns {Promise<string[]>} Array of instance names
      */
     async listInstances() {
+        if (this._closed) {
+            throw new Error('Client has been closed');
+        }
         return new Promise((resolve, reject) => {
             try {
                 this._client.listInstances((instances) => {
@@ -31,6 +35,9 @@ class Client {
      * @returns {Promise<string>} The response from the instance
      */
     async sendCommand(instanceName, command) {
+        if (this._closed) {
+            throw new Error('Client has been closed');
+        }
         return new Promise((resolve, reject) => {
             try {
                 this._client.sendCommand(instanceName, command, (response, error) => {
@@ -48,11 +55,17 @@ class Client {
 
     /**
      * Closes the client and releases resources
+     * Safe to call multiple times
      */
     close() {
-        if (this._client) {
-            this._client.destroy();
+        if (!this._closed && this._client) {
+            try {
+                this._client.destroy();
+            } catch (error) {
+                // Ignore errors during cleanup
+            }
             this._client = null;
+            this._closed = true;
         }
     }
 }

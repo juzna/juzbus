@@ -102,7 +102,18 @@ void juzbus_client_destroy(juzbus_client_t client) {
     os_log_info(c->logger, "Destroying client");
 
     [c->bridge invalidate];
+
+    // Retain bridge temporarily to keep it alive during XPC cleanup
+    JuzbusClientBridge* bridge = c->bridge;
     c->bridge = nil;
+
+    // Schedule deferred cleanup to allow XPC callbacks to complete
+    // This prevents use-after-free when XPC callbacks fire after invalidation
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(100 * NSEC_PER_MSEC)),
+                   dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        // Bridge will be deallocated here after delay
+        (void)bridge;  // Ensure bridge is retained until this block executes
+    });
 
     free(c);
 }

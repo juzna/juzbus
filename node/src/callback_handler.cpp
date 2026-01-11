@@ -29,6 +29,7 @@ CallbackHandler::CallbackHandler(napi_env env, napi_value callback) {
 CallbackHandler::~CallbackHandler() {
     if (tsfn_) {
         napi_release_threadsafe_function(tsfn_, napi_tsfn_release);
+        tsfn_ = nullptr;
     }
 }
 

@@ -8,23 +8,23 @@ namespace juzbus {
 class ClientWrapper {
 private:
     juzbus_client_t client_;
-    napi_env env_;
     napi_ref wrapper_;
+    bool destroyed_;
 
 public:
-    ClientWrapper(napi_env env) : client_(nullptr), env_(env), wrapper_(nullptr) {
+    ClientWrapper(napi_env env) : client_(nullptr), wrapper_(nullptr), destroyed_(false) {
+        (void)env; // Unused parameter
         client_ = juzbus_client_create();
     }
 
     ~ClientWrapper() {
-        if (client_) {
+        if (client_ && !destroyed_) {
             juzbus_client_destroy(client_);
             client_ = nullptr;
         }
-        if (wrapper_) {
-            napi_delete_reference(env_, wrapper_);
-            wrapper_ = nullptr;
-        }
+        // Don't delete reference during shutdown - env might be invalid
+        // napi will clean up references automatically
+        wrapper_ = nullptr;
     }
 
     juzbus_client_t GetClient() const { return client_; }
@@ -80,8 +80,8 @@ public:
         ClientWrapper* wrapper;
         napi_unwrap(env, jsthis, reinterpret_cast<void**>(&wrapper));
 
-        if (!wrapper->GetClient()) {
-            napi_throw_error(env, nullptr, "Client is not initialized");
+        if (!wrapper->GetClient() || wrapper->destroyed_) {
+            napi_throw_error(env, nullptr, "Client has been destroyed");
             return nullptr;
         }
 
@@ -122,8 +122,8 @@ public:
         ClientWrapper* wrapper;
         napi_unwrap(env, jsthis, reinterpret_cast<void**>(&wrapper));
 
-        if (!wrapper->GetClient()) {
-            napi_throw_error(env, nullptr, "Client is not initialized");
+        if (!wrapper->GetClient() || wrapper->destroyed_) {
+            napi_throw_error(env, nullptr, "Client has been destroyed");
             return nullptr;
         }
 
@@ -159,9 +159,10 @@ public:
         ClientWrapper* wrapper;
         napi_unwrap(env, jsthis, reinterpret_cast<void**>(&wrapper));
 
-        if (wrapper && wrapper->GetClient()) {
+        if (wrapper && wrapper->GetClient() && !wrapper->destroyed_) {
             juzbus_client_destroy(wrapper->GetClient());
             wrapper->client_ = nullptr;
+            wrapper->destroyed_ = true;
         }
 
         return nullptr;

@@ -22,6 +22,7 @@ static NSString* const kJuzbusMachServiceName = @"cz.juzna.juzbus";
 @property (nonatomic, strong) dispatch_queue_t queue;
 @property (nonatomic, strong) os_log_t logger;
 @property (nonatomic, strong) NSMutableDictionary<NSString*, NSXPCConnection*>* instanceConnections;
+@property (nonatomic, assign) BOOL invalidated;
 @end
 
 @implementation JuzbusClientBridge
@@ -32,6 +33,7 @@ static NSString* const kJuzbusMachServiceName = @"cz.juzna.juzbus";
         _logger = os_log_create("cz.juzna.juzbus", "objc-client");
         _queue = dispatch_queue_create("cz.juzna.juzbus.client", DISPATCH_QUEUE_SERIAL);
         _instanceConnections = [NSMutableDictionary dictionary];
+        _invalidated = NO;
 
         // Create connection to directory service
         _directoryConnection = [[NSXPCConnection alloc] initWithMachServiceName:kJuzbusMachServiceName
@@ -65,9 +67,18 @@ static NSString* const kJuzbusMachServiceName = @"cz.juzna.juzbus";
 
 - (void)listInstancesWithCallback:(void (^)(NSArray<NSString*>*))callback {
     dispatch_async(self.queue, ^{
+        if (self.invalidated) {
+            os_log_debug(self.logger, "Client already invalidated, ignoring listInstances");
+            return;
+        }
+
         id<DirectoryProtocol> directory = [self.directoryConnection remoteObjectProxy];
 
         [directory listInstancesWithReply:^(NSArray<NSString *> * _Nonnull instances) {
+            if (self.invalidated) {
+                os_log_debug(self.logger, "Client invalidated during listInstances, ignoring callback");
+                return;
+            }
             os_log_debug(self.logger, "Listed %lu instances", (unsigned long)instances.count);
             callback(instances);
         }];
@@ -78,13 +89,23 @@ static NSString* const kJuzbusMachServiceName = @"cz.juzna.juzbus";
          toInstance:(NSString*)instanceName
            callback:(void (^)(NSString* _Nullable, NSError* _Nullable))callback {
     dispatch_async(self.queue, ^{
+        if (self.invalidated) {
+            os_log_debug(self.logger, "Client already invalidated, ignoring sendCommand");
+            return;
+        }
+
         // Step 1: Get endpoint for the instance from directory with error handler
         id<DirectoryProtocol> directory = [self.directoryConnection remoteObjectProxyWithErrorHandler:^(NSError * _Nonnull error) {
+            if (self.invalidated) return;
             os_log_error(self.logger, "Error connecting to directory: %{public}@", error.localizedDescription);
             callback(nil, error);
         }];
 
         [directory endpointFor:instanceName reply:^(NSXPCListenerEndpoint * _Nullable endpoint) {
+            if (self.invalidated) {
+                os_log_debug(self.logger, "Client invalidated during endpointFor, ignoring callback");
+                return;
+            }
             if (!endpoint) {
                 NSError* error = [NSError errorWithDomain:@"cz.juzna.juzbus"
                                                     code:1
@@ -121,11 +142,16 @@ static NSString* const kJuzbusMachServiceName = @"cz.juzna.juzbus";
 
             // Step 3: Send command to the instance with error handler
             id<InstanceProtocol> instance = [instanceConnection remoteObjectProxyWithErrorHandler:^(NSError * _Nonnull error) {
+                if (self.invalidated) return;
                 os_log_error(self.logger, "Error sending command to %{public}@: %{public}@", instanceName, error.localizedDescription);
                 callback(nil, error);
             }];
 
             [instance runCommand:command reply:^(NSString * _Nonnull response) {
+                if (self.invalidated) {
+                    os_log_debug(self.logger, "Client invalidated during command execution, ignoring response");
+                    return;
+                }
                 os_log_debug(self.logger, "Received response from %{public}@", instanceName);
                 callback(response, nil);
             }];
@@ -135,6 +161,11 @@ static NSString* const kJuzbusMachServiceName = @"cz.juzna.juzbus";
 
 - (void)invalidate {
     dispatch_sync(self.queue, ^{
+        if (self.invalidated) {
+            return;  // Already invalidated
+        }
+        self.invalidated = YES;
+
         // Invalidate all instance connections
         for (NSXPCConnection* connection in self.instanceConnections.allValues) {
             [connection invalidate];
