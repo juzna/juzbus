@@ -78,8 +78,11 @@ static NSString* const kJuzbusMachServiceName = @"cz.juzna.juzbus";
          toInstance:(NSString*)instanceName
            callback:(void (^)(NSString* _Nullable, NSError* _Nullable))callback {
     dispatch_async(self.queue, ^{
-        // Step 1: Get endpoint for the instance from directory
-        id<DirectoryProtocol> directory = [self.directoryConnection remoteObjectProxy];
+        // Step 1: Get endpoint for the instance from directory with error handler
+        id<DirectoryProtocol> directory = [self.directoryConnection remoteObjectProxyWithErrorHandler:^(NSError * _Nonnull error) {
+            os_log_error(self.logger, "Error connecting to directory: %{public}@", error.localizedDescription);
+            callback(nil, error);
+        }];
 
         [directory endpointFor:instanceName reply:^(NSXPCListenerEndpoint * _Nullable endpoint) {
             if (!endpoint) {
@@ -116,8 +119,12 @@ static NSString* const kJuzbusMachServiceName = @"cz.juzna.juzbus";
                 os_log_debug(self.logger, "Created connection to instance: %{public}@", instanceName);
             }
 
-            // Step 3: Send command to the instance
-            id<InstanceProtocol> instance = [instanceConnection remoteObjectProxy];
+            // Step 3: Send command to the instance with error handler
+            id<InstanceProtocol> instance = [instanceConnection remoteObjectProxyWithErrorHandler:^(NSError * _Nonnull error) {
+                os_log_error(self.logger, "Error sending command to %{public}@: %{public}@", instanceName, error.localizedDescription);
+                callback(nil, error);
+            }];
+
             [instance runCommand:command reply:^(NSString * _Nonnull response) {
                 os_log_debug(self.logger, "Received response from %{public}@", instanceName);
                 callback(response, nil);
