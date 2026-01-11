@@ -89,6 +89,101 @@ public:
         delete data;
     }
 
+    // Helper to handle Promise resolution
+    static void HandlePromiseResolution(
+        napi_env env,
+        napi_value promise,
+        CommandCallData* call_data
+    ) {
+        // Create a promise chain to handle the result
+        napi_value then_func;
+        napi_get_named_property(env, promise, "then", &then_func);
+
+        napi_value catch_func;
+        napi_get_named_property(env, promise, "catch", &catch_func);
+
+        // Create callback for successful resolution
+        napi_value then_callback;
+        napi_create_function(env, "then", NAPI_AUTO_LENGTH,
+            [](napi_env env, napi_callback_info info) -> napi_value {
+                size_t argc = 1;
+                napi_value argv[1];
+                void* data;
+                napi_get_cb_info(env, info, &argc, argv, nullptr, &data);
+
+                CommandCallData* call_data = static_cast<CommandCallData*>(data);
+
+                // Convert resolved value to string
+                if (argc > 0) {
+                    napi_valuetype type;
+                    napi_typeof(env, argv[0], &type);
+
+                    if (type == napi_string) {
+                        size_t length;
+                        napi_get_value_string_utf8(env, argv[0], nullptr, 0, &length);
+                        char* buffer = new char[length + 1];
+                        napi_get_value_string_utf8(env, argv[0], buffer, length + 1, nullptr);
+                        call_data->response = std::string(buffer);
+                        delete[] buffer;
+                    } else {
+                        call_data->response = "Error: Handler must return a string";
+                    }
+                }
+
+                // Signal completion
+                {
+                    std::lock_guard<std::mutex> lock(call_data->mutex);
+                    call_data->completed = true;
+                }
+                call_data->cv.notify_one();
+
+                return nullptr;
+            }, call_data, &then_callback);
+
+        // Create callback for rejection
+        napi_value catch_callback;
+        napi_create_function(env, "catch", NAPI_AUTO_LENGTH,
+            [](napi_env env, napi_callback_info info) -> napi_value {
+                size_t argc = 1;
+                napi_value argv[1];
+                void* data;
+                napi_get_cb_info(env, info, &argc, argv, nullptr, &data);
+
+                CommandCallData* call_data = static_cast<CommandCallData*>(data);
+
+                // Convert error to string
+                if (argc > 0) {
+                    napi_value message_val;
+                    napi_get_named_property(env, argv[0], "message", &message_val);
+
+                    size_t length;
+                    napi_get_value_string_utf8(env, message_val, nullptr, 0, &length);
+                    char* buffer = new char[length + 1];
+                    napi_get_value_string_utf8(env, message_val, buffer, length + 1, nullptr);
+                    call_data->response = "Error: " + std::string(buffer);
+                    delete[] buffer;
+                } else {
+                    call_data->response = "Error: Handler threw an exception";
+                }
+
+                // Signal completion
+                {
+                    std::lock_guard<std::mutex> lock(call_data->mutex);
+                    call_data->completed = true;
+                }
+                call_data->cv.notify_one();
+
+                return nullptr;
+            }, call_data, &catch_callback);
+
+        // Chain the callbacks
+        napi_value then_result;
+        napi_call_function(env, promise, then_func, 1, &then_callback, &then_result);
+
+        napi_value catch_result;
+        napi_call_function(env, then_result, catch_func, 1, &catch_callback, &catch_result);
+    }
+
     // JavaScript callback handler
     static void CommandHandlerCallback(
         napi_env env,
@@ -111,25 +206,44 @@ public:
         napi_value js_response;
         napi_status status = napi_call_function(env, global, js_callback, 1, &js_command, &js_response);
 
-        if (status == napi_ok) {
-            // Convert response to C++ string
-            size_t length;
-            napi_get_value_string_utf8(env, js_response, nullptr, 0, &length);
-
-            char* buffer = new char[length + 1];
-            napi_get_value_string_utf8(env, js_response, buffer, length + 1, nullptr);
-            call_data->response = std::string(buffer);
-            delete[] buffer;
-        } else {
+        if (status != napi_ok) {
             call_data->response = "Error: JavaScript handler threw an exception";
-        }
-
-        // Signal completion
-        {
             std::lock_guard<std::mutex> lock(call_data->mutex);
             call_data->completed = true;
+            call_data->cv.notify_one();
+            return;
         }
-        call_data->cv.notify_one();
+
+        // Check if result is a Promise
+        bool is_promise = false;
+        napi_is_promise(env, js_response, &is_promise);
+
+        if (is_promise) {
+            // Handle async (Promise-based) response
+            HandlePromiseResolution(env, js_response, call_data);
+        } else {
+            // Handle synchronous response
+            napi_valuetype type;
+            napi_typeof(env, js_response, &type);
+
+            if (type == napi_string) {
+                size_t length;
+                napi_get_value_string_utf8(env, js_response, nullptr, 0, &length);
+                char* buffer = new char[length + 1];
+                napi_get_value_string_utf8(env, js_response, buffer, length + 1, nullptr);
+                call_data->response = std::string(buffer);
+                delete[] buffer;
+            } else {
+                call_data->response = "Error: Handler must return a string or Promise<string>";
+            }
+
+            // Signal completion
+            {
+                std::lock_guard<std::mutex> lock(call_data->mutex);
+                call_data->completed = true;
+            }
+            call_data->cv.notify_one();
+        }
     }
 
     static napi_value Constructor(napi_env env, napi_callback_info info) {

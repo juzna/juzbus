@@ -66,10 +66,19 @@ class Service {
             throw new TypeError('commandHandler must be a function');
         }
 
-        // Wrap handler to ensure it always returns a string
+        // Wrap handler to ensure it always returns a string or Promise<string>
         const wrappedHandler = (command) => {
             try {
                 const result = commandHandler(command);
+
+                // If result is a Promise, handle async
+                if (result && typeof result.then === 'function') {
+                    return result
+                        .then(res => res !== null && res !== undefined ? String(res) : '')
+                        .catch(error => `Error: ${error.message}`);
+                }
+
+                // Synchronous result
                 return result !== null && result !== undefined ? String(result) : '';
             } catch (error) {
                 return `Error: ${error.message}`;

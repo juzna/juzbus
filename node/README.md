@@ -57,6 +57,8 @@ example();
 
 ### Service (Registering as a Service)
 
+#### Synchronous Handler
+
 ```javascript
 const juzbus = require('@juzna/juzbus');
 
@@ -81,6 +83,37 @@ if (service.start()) {
 } else {
     console.error('Failed to start service (name may be taken)');
 }
+```
+
+#### Async Handler
+
+Command handlers can also be async functions, allowing you to perform asynchronous operations:
+
+```javascript
+const juzbus = require('@juzna/juzbus');
+
+// Define ASYNC command handler
+async function handleCommand(command) {
+    if (command === 'ping') return 'pong';
+
+    if (command.startsWith('fetch ')) {
+        const url = command.substring(6);
+        const response = await fetch(url);
+        return await response.text();
+    }
+
+    if (command.startsWith('sleep ')) {
+        const ms = parseInt(command.substring(6));
+        await new Promise(resolve => setTimeout(resolve, ms));
+        return `Slept for ${ms}ms`;
+    }
+
+    return `Unknown command: ${command}`;
+}
+
+// Create and start service with async handler
+const service = new juzbus.Service('async-service', handleCommand);
+service.start();
 ```
 
 ### API
@@ -109,7 +142,7 @@ Closes the client and releases resources.
 Creates a new Juzbus service instance.
 
 - `instanceName` - Name to register the service under (must be unique)
-- `commandHandler` - Function to invoke when commands are received: `(command: string) => string`
+- `commandHandler` - Function to invoke when commands are received: `(command: string) => string | Promise<string>` (can be sync or async)
 
 #### `service.start(): boolean`
 
@@ -144,13 +177,20 @@ The example client will:
 #### Service Example
 
 ```bash
-# Start the Node.js service
+# Start the Node.js service (synchronous handlers)
 node examples/service.js my-node-service
+
+# OR start the async service example
+node examples/service-async.js my-async-service
 
 # In another terminal, send commands to it:
 juzbus exec my-node-service ping
 juzbus exec my-node-service "echo Hello!"
 juzbus exec my-node-service node-version
+
+# Test async operations:
+juzbus exec my-async-service "async-fetch 500"
+juzbus exec my-async-service "sleep 1000"
 
 # Or use the Node.js client:
 node examples/client.js
@@ -160,6 +200,11 @@ The example service will:
 - Register with the directory under the specified name
 - Handle commands: ping, get-name, get-uptime, echo, node-version, platform, memory, help
 - Log received commands and responses
+
+The async service example demonstrates:
+- Async command handlers using async/await
+- Simulated async operations (fetch, processing, sleep)
+- Promise-based command handling
 
 ## Architecture
 
@@ -231,9 +276,9 @@ const instances: string[] = await client.listInstances();
 - ✅ Register Node.js as an XPC service
 - ✅ Receive and handle commands in Node.js
 - ✅ Bidirectional Node ↔ Swift communication
-- ✅ Synchronous command handling
+- ✅ Synchronous and asynchronous command handlers
 - ✅ Multiple concurrent client connections
-- ✅ Example service code
+- ✅ Example service code (both sync and async)
 
 ## Troubleshooting
 

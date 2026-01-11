@@ -30,9 +30,9 @@ export declare class Client {
 /**
  * Command handler function type for services
  * @param command - The command string received
- * @returns Response string to send back to the caller
+ * @returns Response string to send back to the caller (can be async)
  */
-export type CommandHandler = (command: string) => string;
+export type CommandHandler = (command: string) => string | Promise<string>;
 
 /**
  * Juzbus Service for registering as an XPC service
