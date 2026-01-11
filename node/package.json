@@ -9,7 +9,8 @@
   "scripts": {
     "install": "node-gyp rebuild",
     "build": "node-gyp rebuild",
-    "preinstall": "bash scripts/build-framework.sh && bash scripts/copy-dylib.sh",
+    "preinstall": "bash scripts/build-framework.sh",
+    "postinstall": "bash scripts/copy-dylib.sh",
     "test": "node examples/client.js"
   },
   "keywords": [
